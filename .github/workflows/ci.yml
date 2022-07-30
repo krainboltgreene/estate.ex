@@ -1,0 +1,215 @@
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the main branch
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - created
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix deps.get
+  test:
+    needs: [compile]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            _build
+            cover
+          key: ${{ runner.os }}-24.1-1.13-build-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex') }}-${{ hashFiles('config/*.ex') }}-${{ hashFiles('test/**/*.exs') }}-v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix test --cover --slowest 5
+      - uses: actions/upload-artifact@v2
+        with:
+          name: code-coverage-report
+          path: cover/
+  audit:
+    needs: [install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix hex.audit
+  outdated:
+    needs: [install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix hex.outdated
+  compile:
+    needs: [install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            _build
+          key: ${{ runner.os }}-24.1-1.13-build-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex') }}-${{ hashFiles('config/*.ex') }}-${{ hashFiles('test/**/*.exs') }}-v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix compile
+      - run: mix compile
+        env:
+          MIX_ENV: test
+  format:
+    needs: [install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix format --check-formatted
+  credo:
+    needs: [compile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            _build
+          key: ${{ runner.os }}-24.1-1.13-build-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex') }}-${{ hashFiles('config/*.ex') }}-${{ hashFiles('test/**/*.exs') }}-v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix credo
+  dialyzer:
+    needs: [compile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+          key: ${{ runner.os }}-24.1-1.13-deps-${{ hashFiles('mix.lock') }}-v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            _build
+            priv/plts
+          key: ${{ runner.os }}-24.1-1.13-build-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex') }}-${{ hashFiles('config/*.ex') }}-${{ hashFiles('test/**/*.exs') }}-v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 24.1
+          elixir-version: 1.13
+      - run: mix dialyzer.build
+      - run: mix dialyzer --no-check
